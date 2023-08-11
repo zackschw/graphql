@@ -19,7 +19,8 @@ func TestWithClient(t *testing.T) {
 		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 			calls++
 			resp := &http.Response{
-				Body: io.NopCloser(strings.NewReader(`{"data":{"key":"value"}}`)),
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`{"data":{"key":"value"}}`)),
 			}
 			return resp, nil
 		}),
@@ -29,7 +30,8 @@ func TestWithClient(t *testing.T) {
 	client := NewClient("", WithHTTPClient(testClient), UseMultipartForm())
 
 	req := NewRequest(``)
-	err := client.Run(ctx, req, nil)
+	gr := &graphResponse{}
+	err := client.Run(ctx, req, gr)
 	is.NoErr(err)
 
 	is.Equal(calls, 1) // calls
@@ -57,11 +59,11 @@ func TestDoUseMultipartForm(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
-	var responseData map[string]interface{}
-	err := client.Run(ctx, &Request{q: "query {}"}, &responseData)
+	gr := &graphResponse{}
+	err := client.Run(ctx, &Request{q: "query {}"}, gr)
 	is.NoErr(err)
 	is.Equal(calls, 1) // calls
-	is.Equal(responseData["something"], "yes")
+	is.Equal(gr.Data["something"], "yes")
 }
 func TestImmediatelyCloseReqBody(t *testing.T) {
 	is := is.New(t)
@@ -85,11 +87,11 @@ func TestImmediatelyCloseReqBody(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
-	var responseData map[string]interface{}
-	err := client.Run(ctx, &Request{q: "query {}"}, &responseData)
+	gr := &graphResponse{}
+	err := client.Run(ctx, &Request{q: "query {}"}, gr)
 	is.NoErr(err)
 	is.Equal(calls, 1) // calls
-	is.Equal(responseData["something"], "yes")
+	is.Equal(gr.Data["something"], "yes")
 }
 
 func TestDoErr(t *testing.T) {
@@ -114,10 +116,14 @@ func TestDoErr(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
-	var responseData map[string]interface{}
-	err := client.Run(ctx, &Request{q: "query {}"}, &responseData)
-	is.True(err != nil)
-	is.Equal(err.Error(), "graphql: Something went wrong")
+	gr := &graphResponse{}
+	err := client.Run(ctx, &Request{q: "query {}"}, gr)
+	is.NoErr(err)
+	var errors []map[string]interface{}
+	for i := range gr.Errors {
+		errors = append(errors, gr.Errors[i].(map[string]interface{}))
+	}
+	is.Equal(errors[0]["message"], "Something went wrong")
 }
 
 func TestDoServerErr(t *testing.T) {
@@ -139,8 +145,8 @@ func TestDoServerErr(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
-	var responseData map[string]interface{}
-	err := client.Run(ctx, &Request{q: "query {}"}, &responseData)
+	gr := &graphResponse{}
+	err := client.Run(ctx, &Request{q: "query {}"}, gr)
 	is.Equal(err.Error(), "graphql: server returned a non-200 status code: 500")
 }
 
@@ -167,9 +173,14 @@ func TestDoBadRequestErr(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
-	var responseData map[string]interface{}
-	err := client.Run(ctx, &Request{q: "query {}"}, &responseData)
-	is.Equal(err.Error(), "graphql: miscellaneous message as to why the the request was bad")
+	gr := &graphResponse{}
+	err := client.Run(ctx, &Request{q: "query {}"}, gr)
+	is.NoErr(err)
+	var errors []map[string]interface{}
+	for i := range gr.Errors {
+		errors = append(errors, gr.Errors[i].(map[string]interface{}))
+	}
+	is.Equal(errors[0]["message"], "miscellaneous message as to why the the request was bad")
 }
 
 func TestDoNoResponse(t *testing.T) {
@@ -194,7 +205,8 @@ func TestDoNoResponse(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
-	err := client.Run(ctx, &Request{q: "query {}"}, nil)
+	gr := &graphResponse{}
+	err := client.Run(ctx, &Request{q: "query {}"}, gr)
 	is.NoErr(err)
 	is.Equal(calls, 1) // calls
 }
@@ -224,14 +236,12 @@ func TestQuery(t *testing.T) {
 	is.True(req != nil)
 	is.Equal(req.vars["username"], "matryer")
 
-	var resp struct {
-		Value string
-	}
-	err := client.Run(ctx, req, &resp)
+	gr := &graphResponse{}
+	err := client.Run(ctx, req, gr)
 	is.NoErr(err)
 	is.Equal(calls, 1)
 
-	is.Equal(resp.Value, "some data")
+	is.Equal(gr.Data["value"], "some data")
 
 }
 
@@ -260,7 +270,8 @@ func TestFile(t *testing.T) {
 	f := strings.NewReader(`This is a file`)
 	req := NewRequest("query {}")
 	req.File("file", "filename.txt", f)
-	err := client.Run(ctx, req, nil)
+	gr := &graphResponse{}
+	err := client.Run(ctx, req, gr)
 	is.NoErr(err)
 }
 

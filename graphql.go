@@ -1,33 +1,34 @@
 // Package graphql provides a low level GraphQL client.
 //
-//  // create a client (safe to share across requests)
-//  client := graphql.NewClient("https://machinebox.io/graphql")
+//	// create a client (safe to share across requests)
+//	client := graphql.NewClient("https://machinebox.io/graphql")
 //
-//  // make a request
-//  req := graphql.NewRequest(`
-//      query ($key: String!) {
-//          items (id:$key) {
-//              field1
-//              field2
-//              field3
-//          }
-//      }
-//  `)
+//	// make a request
+//	req := graphql.NewRequest(`
+//	    query ($key: String!) {
+//	        items (id:$key) {
+//	            field1
+//	            field2
+//	            field3
+//	        }
+//	    }
+//	`)
 //
-//  // set any variables
-//  req.Var("key", "value")
+//	// set any variables
+//	req.Var("key", "value")
 //
-//  // run it and capture the response
-//  var respData ResponseStruct
-//  if err := client.Run(ctx, req, &respData); err != nil {
-//      log.Fatal(err)
-//  }
+//	// run it and capture the response
+//	var respData ResponseStruct
+//	if err := client.Run(ctx, req, &respData); err != nil {
+//	    log.Fatal(err)
+//	}
 //
-// Specify client
+// # Specify client
 //
 // To specify your own http.Client, use the WithHTTPClient option:
-//  httpclient := &http.Client{}
-//  client := graphql.NewClient("https://machinebox.io/graphql", graphql.WithHTTPClient(httpclient))
+//
+//	httpclient := &http.Client{}
+//	client := graphql.NewClient("https://machinebox.io/graphql", graphql.WithHTTPClient(httpclient))
 package graphql
 
 import (
@@ -76,9 +77,8 @@ func (c *Client) logf(format string, args ...interface{}) {
 	c.Log(fmt.Sprintf(format, args...))
 }
 
-// Run executes the query and unmarshals the response from the data field
-// into the response object.
-// Pass in a nil response object to skip response parsing.
+// Run executes the query and unmarshals the response, including the data field,
+// into the non-nil response object.
 // If the request fails or the server returns an error, the first error
 // will be returned.
 func (c *Client) Run(ctx context.Context, req *Request, resp interface{}) error {
@@ -106,13 +106,10 @@ func (c *Client) runWithJSON(ctx context.Context, req *Request, resp interface{}
 		Variables: req.vars,
 	}
 	if err := json.NewEncoder(&requestBody).Encode(requestBodyObj); err != nil {
-		return errors.Wrap(err, "encode body")
+		return fmt.Errorf("encode body: %w", err)
 	}
 	c.logf(">> variables: %v", req.vars)
 	c.logf(">> query: %s", req.q)
-	gr := &graphResponse{
-		Data: resp,
-	}
 	r, err := http.NewRequest(http.MethodPost, c.endpoint, &requestBody)
 	if err != nil {
 		return err
@@ -137,15 +134,11 @@ func (c *Client) runWithJSON(ctx context.Context, req *Request, resp interface{}
 		return errors.Wrap(err, "reading body")
 	}
 	c.logf("<< %s", buf.String())
-	if err := json.NewDecoder(&buf).Decode(&gr); err != nil {
+	if err := json.NewDecoder(&buf).Decode(resp); err != nil {
 		if res.StatusCode != http.StatusOK {
 			return fmt.Errorf("graphql: server returned a non-200 status code: %v", res.StatusCode)
 		}
 		return errors.Wrap(err, "decoding response")
-	}
-	if len(gr.Errors) > 0 {
-		// return first error
-		return gr.Errors[0]
 	}
 	return nil
 }
@@ -181,9 +174,6 @@ func (c *Client) runWithPostFields(ctx context.Context, req *Request, resp inter
 	c.logf(">> variables: %s", variablesBuf.String())
 	c.logf(">> files: %d", len(req.files))
 	c.logf(">> query: %s", req.q)
-	gr := &graphResponse{
-		Data: resp,
-	}
 	r, err := http.NewRequest(http.MethodPost, c.endpoint, &requestBody)
 	if err != nil {
 		return err
@@ -208,15 +198,11 @@ func (c *Client) runWithPostFields(ctx context.Context, req *Request, resp inter
 		return errors.Wrap(err, "reading body")
 	}
 	c.logf("<< %s", buf.String())
-	if err := json.NewDecoder(&buf).Decode(&gr); err != nil {
+	if err := json.NewDecoder(&buf).Decode(resp); err != nil {
 		if res.StatusCode != http.StatusOK {
 			return fmt.Errorf("graphql: server returned a non-200 status code: %v", res.StatusCode)
 		}
 		return errors.Wrap(err, "decoding response")
-	}
-	if len(gr.Errors) > 0 {
-		// return first error
-		return gr.Errors[0]
 	}
 	return nil
 }
@@ -248,19 +234,6 @@ func ImmediatelyCloseReqBody() ClientOption {
 // ClientOption are functions that are passed into NewClient to
 // modify the behaviour of the Client.
 type ClientOption func(*Client)
-
-type graphErr struct {
-	Message string
-}
-
-func (e graphErr) Error() string {
-	return "graphql: " + e.Message
-}
-
-type graphResponse struct {
-	Data   interface{}
-	Errors []graphErr
-}
 
 // Request is a GraphQL request.
 type Request struct {
