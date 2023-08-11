@@ -3,7 +3,6 @@ package graphql
 import (
 	"context"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -20,7 +19,7 @@ func TestWithClient(t *testing.T) {
 		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 			calls++
 			resp := &http.Response{
-				Body: ioutil.NopCloser(strings.NewReader(`{"data":{"key":"value"}}`)),
+				Body: io.NopCloser(strings.NewReader(`{"data":{"key":"value"}}`)),
 			}
 			return resp, nil
 		}),
@@ -30,7 +29,8 @@ func TestWithClient(t *testing.T) {
 	client := NewClient("", WithHTTPClient(testClient), UseMultipartForm())
 
 	req := NewRequest(``)
-	client.Run(ctx, req, nil)
+	err := client.Run(ctx, req, nil)
+	is.NoErr(err)
 
 	is.Equal(calls, 1) // calls
 }
@@ -43,11 +43,12 @@ func TestDoUseMultipartForm(t *testing.T) {
 		is.Equal(r.Method, http.MethodPost)
 		query := r.FormValue("query")
 		is.Equal(query, `query {}`)
-		io.WriteString(w, `{
+		_, err := io.WriteString(w, `{
 			"data": {
 				"something": "yes"
 			}
 		}`)
+		is.NoErr(err)
 	}))
 	defer srv.Close()
 
@@ -70,11 +71,12 @@ func TestImmediatelyCloseReqBody(t *testing.T) {
 		is.Equal(r.Method, http.MethodPost)
 		query := r.FormValue("query")
 		is.Equal(query, `query {}`)
-		io.WriteString(w, `{
+		_, err := io.WriteString(w, `{
 			"data": {
 				"something": "yes"
 			}
 		}`)
+		is.NoErr(err)
 	}))
 	defer srv.Close()
 
@@ -98,11 +100,12 @@ func TestDoErr(t *testing.T) {
 		is.Equal(r.Method, http.MethodPost)
 		query := r.FormValue("query")
 		is.Equal(query, `query {}`)
-		io.WriteString(w, `{
+		_, err := io.WriteString(w, `{
 			"errors": [{
 				"message": "Something went wrong"
 			}]
 		}`)
+		is.NoErr(err)
 	}))
 	defer srv.Close()
 
@@ -126,7 +129,8 @@ func TestDoServerErr(t *testing.T) {
 		query := r.FormValue("query")
 		is.Equal(query, `query {}`)
 		w.WriteHeader(http.StatusInternalServerError)
-		io.WriteString(w, `Internal Server Error`)
+		_, err := io.WriteString(w, `Internal Server Error`)
+		is.NoErr(err)
 	}))
 	defer srv.Close()
 
@@ -149,11 +153,12 @@ func TestDoBadRequestErr(t *testing.T) {
 		query := r.FormValue("query")
 		is.Equal(query, `query {}`)
 		w.WriteHeader(http.StatusBadRequest)
-		io.WriteString(w, `{
+		_, err := io.WriteString(w, `{
 			"errors": [{
 				"message": "miscellaneous message as to why the the request was bad"
 			}]
 		}`)
+		is.NoErr(err)
 	}))
 	defer srv.Close()
 
@@ -175,11 +180,12 @@ func TestDoNoResponse(t *testing.T) {
 		is.Equal(r.Method, http.MethodPost)
 		query := r.FormValue("query")
 		is.Equal(query, `query {}`)
-		io.WriteString(w, `{
+		_, err := io.WriteString(w, `{
 			"data": {
 				"something": "yes"
 			}
 		}`)
+		is.NoErr(err)
 	}))
 	defer srv.Close()
 
@@ -240,7 +246,7 @@ func TestFile(t *testing.T) {
 		defer file.Close()
 		is.Equal(header.Filename, "filename.txt")
 
-		b, err := ioutil.ReadAll(file)
+		b, err := io.ReadAll(file)
 		is.NoErr(err)
 		is.Equal(string(b), `This is a file`)
 

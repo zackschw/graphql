@@ -3,7 +3,6 @@ package graphql
 import (
 	"context"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -18,14 +17,15 @@ func TestDoJSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		is.Equal(r.Method, http.MethodPost)
-		b, err := ioutil.ReadAll(r.Body)
+		b, err := io.ReadAll(r.Body)
 		is.NoErr(err)
 		is.Equal(string(b), `{"query":"query {}","variables":null}`+"\n")
-		io.WriteString(w, `{
+		_, err = io.WriteString(w, `{
 			"data": {
 				"something": "yes"
 			}
 		}`)
+		is.NoErr(err)
 	}))
 	defer srv.Close()
 
@@ -47,11 +47,12 @@ func TestDoJSONServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		is.Equal(r.Method, http.MethodPost)
-		b, err := ioutil.ReadAll(r.Body)
+		b, err := io.ReadAll(r.Body)
 		is.NoErr(err)
 		is.Equal(string(b), `{"query":"query {}","variables":null}`+"\n")
 		w.WriteHeader(http.StatusInternalServerError)
-		io.WriteString(w, `Internal Server Error`)
+		_, err = io.WriteString(w, `Internal Server Error`)
+		is.NoErr(err)
 	}))
 	defer srv.Close()
 
@@ -72,15 +73,16 @@ func TestDoJSONBadRequestErr(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		is.Equal(r.Method, http.MethodPost)
-		b, err := ioutil.ReadAll(r.Body)
+		b, err := io.ReadAll(r.Body)
 		is.NoErr(err)
 		is.Equal(string(b), `{"query":"query {}","variables":null}`+"\n")
 		w.WriteHeader(http.StatusBadRequest)
-		io.WriteString(w, `{
+		_, err = io.WriteString(w, `{
 			"errors": [{
 				"message": "miscellaneous message as to why the the request was bad"
 			}]
 		}`)
+		is.NoErr(err)
 	}))
 	defer srv.Close()
 
@@ -101,7 +103,7 @@ func TestQueryJSON(t *testing.T) {
 	var calls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
-		b, err := ioutil.ReadAll(r.Body)
+		b, err := io.ReadAll(r.Body)
 		is.NoErr(err)
 		is.Equal(string(b), `{"query":"query {}","variables":{"username":"matryer"}}`+"\n")
 		_, err = io.WriteString(w, `{"data":{"value":"some data"}}`)
